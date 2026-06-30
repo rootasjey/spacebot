@@ -5,6 +5,14 @@
 <h1 align="center">Spacebot</h1>
 
 <p align="center">
+  <strong>Fork personnel</strong> — ajoute un proxy Umbrel auth intégré à l'app desktop.
+  <br/>
+  <a href="CHANGES.md">Consulter les modifications</a>
+</p>
+
+---
+
+<p align="center">
   <strong>The agent harness that runs teams, communities, and companies.</strong>
 </p>
 
