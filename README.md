@@ -5,9 +5,9 @@
 <h1 align="center">Spacebot</h1>
 
 <p align="center">
-  <strong>Fork personnel</strong> — ajoute un proxy Umbrel auth intégré à l'app desktop.
+  <strong>Personal fork</strong> — adds an integrated Umbrel auth proxy to the desktop app.
   <br/>
-  <a href="CHANGES.md">Consulter les modifications</a>
+  <a href="CHANGES.md">View changes</a>
 </p>
 
 ---
