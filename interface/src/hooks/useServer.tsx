@@ -7,10 +7,11 @@ import {
 	useRef,
 	type ReactNode,
 } from "react";
-import { setServerUrl as setClientServerUrl } from "@/api/client";
+import { getApiBase, setServerUrl as setClientServerUrl } from "@/api/client";
 import {
 	HAS_BUNDLED_SERVER,
 	IS_DESKTOP,
+	PROXY_PORT,
 	invoke as platformInvoke,
 } from "@/platform";
 
@@ -71,7 +72,9 @@ async function checkHealth(baseUrl: string): Promise<boolean> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), 3000);
 	try {
-		const response = await fetch(`${baseUrl}/api/health`, {
+		// In desktop mode, health check goes through the Rust proxy
+		const checkUrl = IS_DESKTOP ? `http://localhost:${PROXY_PORT}/api/health` : `${baseUrl}/api/health`;
+		const response = await fetch(checkUrl, {
 			signal: controller.signal,
 		});
 		return response.ok;
@@ -87,7 +90,7 @@ async function persistUrl(url: string): Promise<void> {
 	localStorage.setItem(STORAGE_KEY, url);
 	if (IS_DESKTOP) {
 		try {
-			await platformInvoke("set_server_url", { url });
+			await platformInvoke("set_target_url", { url });
 		} catch {
 			// Desktop command not available (e.g. browser/dev mode)
 		}
@@ -99,7 +102,7 @@ async function persistUrl(url: string): Promise<void> {
 async function loadPersistedUrl(): Promise<string | null> {
 	if (IS_DESKTOP) {
 		try {
-			const url = await platformInvoke<string>("get_server_url");
+			const url = await platformInvoke<string>("get_target_url");
 			// The desktop command returns the default sentinel when nothing
 			// is stored. Treat it (and empty strings) as "not persisted"
 			// so we fall through to localStorage.

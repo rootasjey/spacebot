@@ -11,6 +11,9 @@
 export type HostKind = "browser" | "desktop";
 export type OperatingSystem = "macos" | "windows" | "linux" | "unknown";
 
+/** Port the desktop proxy listens on */
+export const PROXY_PORT = 19777;
+
 export interface PlatformInfo {
 	host: HostKind;
 	os: OperatingSystem;
@@ -63,7 +66,7 @@ const host: HostKind = getDesktopBridge() ? "desktop" : "browser";
 export const PLATFORM: PlatformInfo = Object.freeze({
 	host,
 	os: detectOperatingSystem(),
-	hasBundledServer: host === "desktop",
+	hasBundledServer: false, // Sidecar removed; server runs remotely or via proxy
 });
 
 export const IS_DESKTOP = PLATFORM.host === "desktop";

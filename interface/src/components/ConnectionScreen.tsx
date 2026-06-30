@@ -4,23 +4,33 @@ import { useServer } from "@/hooks/useServer";
 import {
 	dragRegionAttributes,
 	IS_DESKTOP,
-	spawnBundledProcess,
+	invoke as platformInvoke,
 } from "@/platform";
 
 const Orb = lazy(() => import("@/components/Orb"));
 
-type SidecarState = "idle" | "starting" | "running" | "error";
-
 /**
  * Full-screen connection screen shown when the app cannot reach
  * the spacebot server. Allows changing the server URL and, in
- * desktop hosts with a bundled binary, starting a local instance.
+ * desktop mode, configuring the Umbrel password for proxy auth.
  */
 export function ConnectionScreen() {
-	const { serverUrl, setServerUrl, state, hasBundledServer } = useServer();
+	const { serverUrl, setServerUrl, state } = useServer();
 	const [draft, setDraft] = useState(serverUrl);
-	const [sidecarState, setSidecarState] = useState<SidecarState>("idle");
-	const [sidecarError, setSidecarError] = useState<string | null>(null);
+	const [umbrelPassword, setUmbrelPassword] = useState("");
+	const [umbrelPasswordLoaded, setUmbrelPasswordLoaded] = useState(false);
+
+	// Load saved Umbrel password on mount (desktop only)
+	useEffect(() => {
+		if (!IS_DESKTOP || umbrelPasswordLoaded) return;
+		(async () => {
+			try {
+				const saved = await platformInvoke<string>("get_umbrel_password");
+				if (saved) setUmbrelPassword(saved);
+			} catch { /* ok */ }
+			setUmbrelPasswordLoaded(true);
+		})();
+	}, [umbrelPasswordLoaded]);
 
 	// Keep draft in sync when serverUrl changes externally
 	useEffect(() => {
@@ -29,7 +39,13 @@ export function ConnectionScreen() {
 
 	const handleConnect = useCallback(() => {
 		setServerUrl(draft);
-	}, [draft, setServerUrl]);
+		// Save Umbrel password if set
+		if (IS_DESKTOP && umbrelPassword) {
+			platformInvoke("set_umbrel_password", {
+				password: umbrelPassword,
+			}).catch(() => {});
+		}
+	}, [draft, setServerUrl, umbrelPassword]);
 
 	const handleKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
@@ -38,59 +54,8 @@ export function ConnectionScreen() {
 		[handleConnect],
 	);
 
-	const handleStartLocal = useCallback(async () => {
-		if (!IS_DESKTOP) return;
-		setSidecarState("starting");
-		setSidecarError(null);
-		try {
-			let sawReady = false;
-			const spawned = await spawnBundledProcess("binaries/spacebot", [
-				"start",
-				"--foreground",
-			], {
-				onError: (error) => {
-					setSidecarState("error");
-					setSidecarError(error);
-				},
-				onClose: (data) => {
-					if (!sawReady || data.code === null || data.code !== 0) {
-						setSidecarState("error");
-						setSidecarError(
-							data.code === null
-								? "Process exited before the HTTP server became ready"
-								: `Process exited with code ${data.code}`,
-						);
-						return;
-					}
-					setSidecarState("idle");
-				},
-				onStdout: (line) => {
-					// Look for the "HTTP server listening" log line
-					if (line.includes("HTTP server listening")) {
-						sawReady = true;
-						setSidecarState("running");
-						// Point the app at localhost
-						setServerUrl("http://localhost:19898");
-					}
-				},
-			});
-
-			if (!spawned) {
-				setSidecarState("error");
-				setSidecarError("Bundled server is unavailable in this host.");
-				return;
-			}
-
-			setSidecarState("starting");
-		} catch (error) {
-			setSidecarState("error");
-			setSidecarError(
-				error instanceof Error ? error.message : String(error),
-			);
-		}
-	}, [setServerUrl]);
-
 	const isChecking = state === "checking";
+	const isRemoteUrl = draft.includes("//") && !draft.includes("localhost") && !draft.includes("127.0.0.1");
 
 	return (
 		<div className="flex h-screen w-full flex-col items-center justify-center bg-app overflow-hidden">
@@ -127,8 +92,7 @@ export function ConnectionScreen() {
 						Connect to Spacebot
 					</h1>
 					<p className="text-center text-sm text-ink-dull">
-						Enter the URL of a running Spacebot instance, or start
-						one locally.
+						Enter the URL of your Spacebot instance.
 					</p>
 				</div>
 
@@ -158,6 +122,25 @@ export function ConnectionScreen() {
 						</Button>
 					</div>
 
+					{/* Umbrel password (desktop + remote URL only) */}
+					{IS_DESKTOP && isRemoteUrl && (
+						<div className="flex flex-col gap-1.5">
+							<label className="text-xs font-medium text-ink-dull">
+								Umbrel Password
+								<span className="ml-1 text-ink-faint">
+									(required if behind Umbrel auth)
+								</span>
+							</label>
+							<Input
+								type="password"
+								value={umbrelPassword}
+								onChange={(e) => setUmbrelPassword(e.target.value)}
+								placeholder="Umbrel password"
+								size="md"
+							/>
+						</div>
+					)}
+
 					{/* Connection status */}
 					{isChecking ? (
 						<p className="text-xs text-ink-faint">
@@ -170,70 +153,22 @@ export function ConnectionScreen() {
 					) : null}
 				</div>
 
-				{/* Divider */}
-				{hasBundledServer && (
-					<>
-						<div className="flex w-full items-center gap-3">
-							<div className="h-px flex-1 bg-app-line" />
-							<span className="text-xs text-ink-faint">or</span>
-							<div className="h-px flex-1 bg-app-line" />
-						</div>
-
-						{/* Start Local Server */}
-						<div className="flex w-full flex-col gap-3">
-						<Button
-							onClick={handleStartLocal}
-							variant="outline"
-							disabled={
-								sidecarState === "starting" ||
-									sidecarState === "running"
-								}
-								className="w-full"
-							>
-								{sidecarState === "starting"
-									? "Starting Spacebot..."
-									: sidecarState === "running"
-										? "Server Running"
-										: "Start Local Server"}
-							</Button>
-
-							{sidecarState === "starting" && (
-								<p className="text-xs text-ink-faint">
-									Starting the bundled Spacebot binary. This
-									may take a few seconds on first run...
-								</p>
-							)}
-
-							{sidecarState === "error" && sidecarError && (
-								<p className="text-xs text-red-400">
-									{sidecarError}
-								</p>
-							)}
-						</div>
-					</>
-				)}
-
 				{/* Footer hint */}
 				<p className="text-center text-xs text-ink-faint">
 					Spacebot runs on port 19898 by default.
-					{!hasBundledServer && (
-						<>
-							{" "}
-							Install via{" "}
-							<span className="font-mono text-ink-dull">
-								docker
-							</span>{" "}
-							or download from{" "}
-							<a
-								href="https://spacebot.sh"
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-accent hover:underline"
-							>
-								spacebot.sh
-							</a>
-						</>
-					)}
+					{" "}Install via{" "}
+					<span className="font-mono text-ink-dull">
+						docker
+					</span>{" "}
+					or download from{" "}
+					<a
+						href="https://spacebot.sh"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-accent hover:underline"
+					>
+						spacebot.sh
+					</a>
 				</p>
 			</div>
 		</div>

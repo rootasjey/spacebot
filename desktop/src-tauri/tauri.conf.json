@@ -38,10 +38,6 @@
   },
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/spacebot"],
-    "resources": {
-      "gen/icon/**/*": "./"
-    },
     "macOS": {
       "minimumSystemVersion": "11.0",
       "infoPlist": "Info.plist"

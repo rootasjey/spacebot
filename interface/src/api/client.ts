@@ -7,10 +7,12 @@ declare global {
 export const BASE_PATH: string = window.__SPACEBOT_BASE_PATH || "";
 
 /**
- * Dynamic server URL for the Tauri desktop app. When set, all API
- * requests target this absolute URL (e.g. "http://localhost:19898/api/...").
- * When empty the app uses relative paths (same-origin / proxy mode).
+ * In desktop mode, the Rust proxy always runs on localhost:PROXY_PORT.
+ * All API requests go through the proxy, which forwards to the target
+ * server and handles Umbrel auth automatically.
  */
+import { IS_DESKTOP, PROXY_PORT } from "@/platform";
+
 let _serverUrl = "";
 export function setServerUrl(url: string) {
 	_serverUrl = url.replace(/\/+$/, "");
@@ -20,6 +22,7 @@ export function getServerUrl(): string {
 }
 
 export function getApiBase(): string {
+	if (IS_DESKTOP) return `http://localhost:${PROXY_PORT}/api`;
 	if (_serverUrl) return `${_serverUrl}/api`;
 	return BASE_PATH + "/api";
 }
