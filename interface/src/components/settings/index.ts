@@ -9,6 +9,7 @@ export {OpenCodeSection} from "./OpenCodeSection";
 export {UpdatesSection} from "./UpdatesSection";
 export {ChangelogSection} from "./ChangelogSection";
 export {ConfigFileSection} from "./ConfigFileSection";
+export {DesktopSection} from "./DesktopSection";
 export {ProviderCard} from "./ProviderCard";
 export {ChatGptOAuthDialog} from "./ChatGptOAuthDialog";
 export {SECTIONS, PROVIDERS, CHATGPT_OAUTH_DEFAULT_MODEL, PERMISSION_OPTIONS} from "./constants";

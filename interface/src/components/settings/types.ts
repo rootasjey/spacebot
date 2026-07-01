@@ -12,7 +12,8 @@ export type SectionId =
 	| "worker-logs"
 	| "updates"
 	| "config-file"
-	| "changelog";
+	| "changelog"
+	| "desktop";
 
 export type Platform =
 	| "discord"

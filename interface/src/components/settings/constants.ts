@@ -68,6 +68,12 @@ export const SECTIONS = [
 		description: "Raw config.toml editor",
 	},
 	{
+		id: "desktop" as const,
+		label: "Desktop",
+		group: "system" as const,
+		description: "Desktop app behaviour and shortcuts",
+	},
+	{
 		id: "changelog" as const,
 		label: "Changelog",
 		group: "system" as const,

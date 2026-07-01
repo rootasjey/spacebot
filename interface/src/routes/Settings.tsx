@@ -26,6 +26,7 @@ import {
 	UpdatesSection,
 	ChangelogSection,
 	ConfigFileSection,
+	DesktopSection,
 	ProviderCard,
 	ChatGptOAuthDialog,
 	SECTIONS,
@@ -719,6 +720,8 @@ export function Settings() {
 						<ConfigFileSection />
 					) : activeSection === "changelog" ? (
 						<ChangelogSection />
+					) : activeSection === "desktop" ? (
+						<DesktopSection />
 					) : null}
 				</div>
 			</div>

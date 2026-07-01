@@ -5,10 +5,11 @@ mod proxy;
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 use tauri::Emitter;
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
 use proxy::ProxyState;
 
@@ -16,6 +17,150 @@ use proxy::ProxyState;
 
 const PROXY_PORT: u16 = 19777;
 const DEFAULT_TARGET_URL: &str = "http://localhost:19898";
+
+// ── Global shortcut state ─────────────────────────────────────────────────
+
+static VOICE_SHORTCUT_ENABLED: AtomicBool = AtomicBool::new(true);
+static VOICE_RECORDING_ENABLED: AtomicBool = AtomicBool::new(true);
+
+static CURRENT_TOGGLE_KEY: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new(String::new()));
+static PARSED_TOGGLE: LazyLock<Mutex<Option<Shortcut>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+static CURRENT_RECORDING_KEY: LazyLock<Mutex<String>> =
+    LazyLock::new(|| Mutex::new(String::new()));
+static PARSED_RECORDING: LazyLock<Mutex<Option<Shortcut>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+const DEFAULT_TOGGLE_KEY: &str = "Alt+Space";
+const DEFAULT_RECORDING_KEY: &str = "Alt+Shift+Space";
+
+fn read_bool_inv(settings: &serde_json::Value, key: &str, default_enabled: bool) -> bool {
+    !settings
+        .get(key)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(!default_enabled)
+}
+
+fn read_str_setting(settings: &serde_json::Value, key: &str, default: &str) -> String {
+    settings
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn parse_key_code(s: &str) -> Option<Code> {
+    Some(match s {
+        "Space" => Code::Space,
+        "Enter" => Code::Enter,
+        "Tab" => Code::Tab,
+        "Escape" => Code::Escape,
+        "Backspace" => Code::Backspace,
+        "Delete" => Code::Delete,
+        "Home" => Code::Home,
+        "End" => Code::End,
+        "PageUp" => Code::PageUp,
+        "PageDown" => Code::PageDown,
+        "ArrowUp" => Code::ArrowUp,
+        "ArrowDown" => Code::ArrowDown,
+        "ArrowLeft" => Code::ArrowLeft,
+        "ArrowRight" => Code::ArrowRight,
+        "F1" => Code::F1,   "F2" => Code::F2,   "F3" => Code::F3,
+        "F4" => Code::F4,   "F5" => Code::F5,   "F6" => Code::F6,
+        "F7" => Code::F7,   "F8" => Code::F8,   "F9" => Code::F9,
+        "F10" => Code::F10, "F11" => Code::F11, "F12" => Code::F12,
+        "F13" => Code::F13, "F14" => Code::F14, "F15" => Code::F15,
+        "F16" => Code::F16, "F17" => Code::F17, "F18" => Code::F18,
+        "F19" => Code::F19, "F20" => Code::F20,
+        "0" => Code::Digit0, "1" => Code::Digit1, "2" => Code::Digit2,
+        "3" => Code::Digit3, "4" => Code::Digit4, "5" => Code::Digit5,
+        "6" => Code::Digit6, "7" => Code::Digit7, "8" => Code::Digit8,
+        "9" => Code::Digit9,
+        "A" => Code::KeyA, "B" => Code::KeyB, "C" => Code::KeyC,
+        "D" => Code::KeyD, "E" => Code::KeyE, "F" => Code::KeyF,
+        "G" => Code::KeyG, "H" => Code::KeyH, "I" => Code::KeyI,
+        "J" => Code::KeyJ, "K" => Code::KeyK, "L" => Code::KeyL,
+        "M" => Code::KeyM, "N" => Code::KeyN, "O" => Code::KeyO,
+        "P" => Code::KeyP, "Q" => Code::KeyQ, "R" => Code::KeyR,
+        "S" => Code::KeyS, "T" => Code::KeyT, "U" => Code::KeyU,
+        "V" => Code::KeyV, "W" => Code::KeyW, "X" => Code::KeyX,
+        "Y" => Code::KeyY, "Z" => Code::KeyZ,
+        "Comma" => Code::Comma,
+        "Period" => Code::Period,
+        "Minus" => Code::Minus,
+        "Equal" => Code::Equal,
+        "BracketLeft" => Code::BracketLeft,
+        "BracketRight" => Code::BracketRight,
+        "Semicolon" => Code::Semicolon,
+        "Quote" => Code::Quote,
+        "Backslash" => Code::Backslash,
+        "Backquote" => Code::Backquote,
+        "Slash" => Code::Slash,
+        "IntlBackslash" => Code::IntlBackslash,
+        _ => return None,
+    })
+}
+
+fn parse_shortcut(s: &str) -> Option<Shortcut> {
+    let parts: Vec<&str> = s.split('+').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let code_str = parts.last()?;
+    let mut modifiers = Modifiers::empty();
+    for part in parts[..parts.len() - 1].iter() {
+        match *part {
+            "Alt" | "Option" => modifiers |= Modifiers::ALT,
+            "Cmd" | "Command" | "Super" => modifiers |= Modifiers::SUPER,
+            "Shift" => modifiers |= Modifiers::SHIFT,
+            "Ctrl" | "Control" => modifiers |= Modifiers::CONTROL,
+            _ => return None,
+        }
+    }
+    let code = parse_key_code(code_str)?;
+    Some(Shortcut::new(Some(modifiers), code))
+}
+
+fn register_shortcut(
+    app: &tauri::AppHandle,
+    stored: &std::sync::Mutex<Option<Shortcut>>,
+    key_str: &str,
+) {
+    if let Some(shortcut) = parse_shortcut(key_str) {
+        *stored.lock().unwrap() = Some(shortcut.clone());
+        if let Err(e) = app.global_shortcut().register(shortcut) {
+            tracing::warn!(%e, "Failed to register shortcut {key_str}");
+        }
+    }
+}
+
+fn unregister_shortcut(app: &tauri::AppHandle, key_str: &str) {
+    if let Some(shortcut) = parse_shortcut(key_str) {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+}
+
+fn swap_shortcut(
+    app: &tauri::AppHandle,
+    key_mutex: &std::sync::Mutex<String>,
+    parsed_mutex: &std::sync::Mutex<Option<Shortcut>>,
+    new_key: &str,
+) -> Result<(), String> {
+    if parse_shortcut(new_key).is_none() {
+        return Err(format!("Invalid shortcut key: {new_key}"));
+    }
+    let old_key = {
+        let mut current = key_mutex.lock().map_err(|e| e.to_string())?;
+        let old = current.clone();
+        *current = new_key.to_string();
+        old
+    };
+    unregister_shortcut(app, &old_key);
+    register_shortcut(app, parsed_mutex, new_key);
+    Ok(())
+}
 
 const OVERLAY_INITIAL_WIDTH: f64 = 520.0;
 const OVERLAY_INITIAL_HEIGHT: f64 = 100.0;
@@ -115,6 +260,85 @@ async fn set_umbrel_password(
 #[tauri::command]
 fn get_proxy_port() -> u16 {
     PROXY_PORT
+}
+
+// ── Shortcut config ──────────────────────────────────────────────────────
+
+const SHORTCUT_DISABLED_KEY: &str = "voice_shortcut_disabled";
+const SHORTCUT_TOGGLE_KEY: &str = "voice_shortcut_toggle";
+const RECORDING_DISABLED_KEY: &str = "voice_recording_disabled";
+const RECORDING_TOGGLE_KEY: &str = "voice_recording_shortcut";
+
+/// — Toggle shortcut (show/hide overlay) —
+
+#[tauri::command]
+fn get_toggle_shortcut_state(app: tauri::AppHandle) -> bool {
+    let Ok(path) = settings_path(&app) else {
+        return true;
+    };
+    let settings = read_settings(&path);
+    read_bool_inv(&settings, SHORTCUT_DISABLED_KEY, true)
+}
+
+#[tauri::command]
+fn get_toggle_shortcut_key(app: tauri::AppHandle) -> String {
+    let Ok(path) = settings_path(&app) else {
+        return DEFAULT_TOGGLE_KEY.to_string();
+    };
+    let settings = read_settings(&path);
+    read_str_setting(&settings, SHORTCUT_TOGGLE_KEY, DEFAULT_TOGGLE_KEY)
+}
+
+#[tauri::command]
+async fn set_toggle_shortcut(
+    app: tauri::AppHandle,
+    enabled: bool,
+    key: String,
+) -> Result<(), String> {
+    let path = settings_path(&app)?;
+    let mut settings = read_settings(&path);
+    settings[SHORTCUT_DISABLED_KEY] = serde_json::Value::Bool(!enabled);
+    settings[SHORTCUT_TOGGLE_KEY] = serde_json::Value::String(key.clone());
+    write_settings(&path, &settings)?;
+    VOICE_SHORTCUT_ENABLED.store(enabled, Ordering::SeqCst);
+    swap_shortcut(&app, &*CURRENT_TOGGLE_KEY, &*PARSED_TOGGLE, &key)?;
+    Ok(())
+}
+
+/// — Recording shortcut (start/stop recording) —
+
+#[tauri::command]
+fn get_recording_shortcut_state(app: tauri::AppHandle) -> bool {
+    let Ok(path) = settings_path(&app) else {
+        return true;
+    };
+    let settings = read_settings(&path);
+    read_bool_inv(&settings, RECORDING_DISABLED_KEY, true)
+}
+
+#[tauri::command]
+fn get_recording_shortcut_key(app: tauri::AppHandle) -> String {
+    let Ok(path) = settings_path(&app) else {
+        return DEFAULT_RECORDING_KEY.to_string();
+    };
+    let settings = read_settings(&path);
+    read_str_setting(&settings, RECORDING_TOGGLE_KEY, DEFAULT_RECORDING_KEY)
+}
+
+#[tauri::command]
+async fn set_recording_shortcut(
+    app: tauri::AppHandle,
+    enabled: bool,
+    key: String,
+) -> Result<(), String> {
+    let path = settings_path(&app)?;
+    let mut settings = read_settings(&path);
+    settings[RECORDING_DISABLED_KEY] = serde_json::Value::Bool(!enabled);
+    settings[RECORDING_TOGGLE_KEY] = serde_json::Value::String(key.clone());
+    write_settings(&path, &settings)?;
+    VOICE_RECORDING_ENABLED.store(enabled, Ordering::SeqCst);
+    swap_shortcut(&app, &*CURRENT_RECORDING_KEY, &*PARSED_RECORDING, &key)?;
+    Ok(())
 }
 
 // ── Voice overlay ─────────────────────────────────────────────────────────
@@ -257,36 +481,49 @@ fn main() {
         )
         .init();
 
-    let toggle_shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
-    let voice_shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space);
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcut(toggle_shortcut.clone())
-                .unwrap()
-                .with_shortcut(voice_shortcut.clone())
-                .unwrap()
                 .with_handler(
-                    move |app, _shortcut, event| match (_shortcut, event.state) {
-                        (shortcut, tauri_plugin_global_shortcut::ShortcutState::Pressed)
-                            if shortcut == &toggle_shortcut =>
-                        {
-                            toggle_overlay(app);
+                    move |app, shortcut, event| {
+                        let pressed = event.state
+                            == tauri_plugin_global_shortcut::ShortcutState::Pressed;
+                        let released = event.state
+                            == tauri_plugin_global_shortcut::ShortcutState::Released;
+
+                        // Check toggle shortcut
+                        if pressed || released {
+                            if let Ok(guard) = PARSED_TOGGLE.lock() {
+                                if let Some(ref toggle) = *guard {
+                                    if shortcut == toggle {
+                                        if VOICE_SHORTCUT_ENABLED.load(Ordering::Relaxed) {
+                                            if pressed {
+                                                toggle_overlay(app);
+                                            }
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
                         }
-                        (shortcut, tauri_plugin_global_shortcut::ShortcutState::Pressed)
-                            if shortcut == &voice_shortcut =>
-                        {
-                            activate_voice_overlay(app);
-                            let _ = app.emit("voice-overlay:start-recording", ());
+
+                        // Check recording shortcut
+                        if let Ok(guard) = PARSED_RECORDING.lock() {
+                            if let Some(ref recording) = *guard {
+                                if shortcut == recording {
+                                    if VOICE_RECORDING_ENABLED.load(Ordering::Relaxed) {
+                                        if pressed {
+                                            activate_voice_overlay(app);
+                                            let _ = app.emit("voice-overlay:start-recording", ());
+                                        } else if released {
+                                            let _ = app.emit("voice-overlay:stop-recording", ());
+                                        }
+                                    }
+                                    return;
+                                }
+                            }
                         }
-                        (shortcut, tauri_plugin_global_shortcut::ShortcutState::Released)
-                            if shortcut == &voice_shortcut =>
-                        {
-                            let _ = app.emit("voice-overlay:stop-recording", ());
-                        }
-                        _ => {}
                     },
                 )
                 .build(),
@@ -299,6 +536,12 @@ fn main() {
             get_proxy_port,
             toggle_voice_overlay,
             resize_overlay_window,
+            get_toggle_shortcut_state,
+            get_toggle_shortcut_key,
+            set_toggle_shortcut,
+            get_recording_shortcut_state,
+            get_recording_shortcut_key,
+            set_recording_shortcut,
         ])
         .setup(move |app| {
             // ── Load settings and start proxy ──────────────────────
@@ -326,6 +569,24 @@ fn main() {
                 })
                 .unwrap_or_default()
             };
+
+            // Read shortcut config from settings & register both shortcuts
+            {
+                let path = settings_path(&app_handle).ok();
+                let settings = path.as_ref().map(read_settings).unwrap_or_default();
+
+                let toggle_enabled = read_bool_inv(&settings, SHORTCUT_DISABLED_KEY, true);
+                let toggle_key = read_str_setting(&settings, SHORTCUT_TOGGLE_KEY, DEFAULT_TOGGLE_KEY);
+                VOICE_SHORTCUT_ENABLED.store(toggle_enabled, Ordering::SeqCst);
+                *CURRENT_TOGGLE_KEY.lock().unwrap() = toggle_key.clone();
+                register_shortcut(app.handle(), &*PARSED_TOGGLE, &toggle_key);
+
+                let rec_enabled = read_bool_inv(&settings, RECORDING_DISABLED_KEY, true);
+                let rec_key = read_str_setting(&settings, RECORDING_TOGGLE_KEY, DEFAULT_RECORDING_KEY);
+                VOICE_RECORDING_ENABLED.store(rec_enabled, Ordering::SeqCst);
+                *CURRENT_RECORDING_KEY.lock().unwrap() = rec_key.clone();
+                register_shortcut(app.handle(), &*PARSED_RECORDING, &rec_key);
+            }
 
             // Build shared proxy state
             let proxy_state = Arc::new(ProxyState::new(
