@@ -26,7 +26,6 @@ impl ProxyState {
         let client = Client::builder()
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(std::time::Duration::from_secs(30))
             .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("Failed to build reqwest client");
