@@ -23,8 +23,8 @@
         "decorations": true,
         "transparent": true,
         "visible": false,
-        "titleBarStyle": "Overlay",
-        "backgroundColor": [0, 0, 0, 0],
+        "titleBarStyle": "Transparent",
+        "backgroundColor": [15, 15, 20, 255],
         "windowEffects": {
           "effects": ["sidebar"],
           "state": "followsWindowActiveState",

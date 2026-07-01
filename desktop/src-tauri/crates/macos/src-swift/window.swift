@@ -6,11 +6,6 @@ public func setTitlebarStyle(window: NSWindow, fullScreen: Bool) {
     window.titlebarAppearsTransparent = true
     if fullScreen {
         window.toolbar = nil
-    } else {
-        // Invisible toolbar pads the traffic lights down from the top edge
-        let toolbar = NSToolbar(identifier: "window_invisible_toolbar")
-        toolbar.showsBaselineSeparator = false
-        window.toolbar = toolbar
     }
     window.titleVisibility = fullScreen ? .visible : .hidden
 }
