@@ -24,12 +24,7 @@
         "transparent": true,
         "visible": false,
         "titleBarStyle": "Transparent",
-        "backgroundColor": [15, 15, 20, 255],
-        "windowEffects": {
-          "effects": ["sidebar"],
-          "state": "followsWindowActiveState",
-          "radius": 9
-        }
+        "backgroundColor": [15, 15, 20, 255]
       }
     ],
     "security": {

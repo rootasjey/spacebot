@@ -381,6 +381,32 @@ fn resize_overlay_window(
     Ok(())
 }
 
+/// Set the macOS native window appearance. `theme_type` is:
+/// - `0` = light (aqua)
+/// - `1` = dark (darkAqua)
+/// - `-1` = follow system (nil)
+#[tauri::command]
+fn set_native_theme(theme_type: isize) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        sb_desktop_macos::lock_app_theme(theme_type);
+    }
+    Ok(())
+}
+
+/// Return the system-level appearance: 0 for light (aqua), 1 for dark (darkAqua).
+/// Ignores any per-app override so the frontend can detect the true system
+/// preference even when the app's NSAppearance is locked.
+#[tauri::command]
+fn get_system_appearance() -> isize {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return sb_desktop_macos::get_system_appearance();
+    }
+    #[cfg(not(target_os = "macos"))]
+    1
+}
+
 fn activate_voice_overlay(app: &tauri::AppHandle) {
     if app.get_webview_window("voice-overlay").is_none() {
         create_overlay_window(app);
@@ -453,7 +479,7 @@ fn create_overlay_window(app: &tauri::AppHandle) {
             {
                 if let Ok(ns_window) = window.ns_window() {
                     unsafe {
-                        sb_desktop_macos::lock_app_theme(1);
+                        sb_desktop_macos::lock_app_theme(-1);
                     }
                     let _ = ns_window;
                 }
@@ -536,6 +562,8 @@ fn main() {
             get_proxy_port,
             toggle_voice_overlay,
             resize_overlay_window,
+            set_native_theme,
+            get_system_appearance,
             get_toggle_shortcut_state,
             get_toggle_shortcut_key,
             set_toggle_shortcut,
@@ -619,7 +647,7 @@ fn main() {
                     match window.ns_window() {
                         Ok(ns_window) => unsafe {
                             sb_desktop_macos::set_titlebar_style(&ns_window, false);
-                            sb_desktop_macos::lock_app_theme(1);
+                            sb_desktop_macos::lock_app_theme(-1);
                         },
                         Err(e) => {
                             tracing::warn!("Could not get NSWindow handle: {}", e);

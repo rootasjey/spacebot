@@ -58,7 +58,7 @@ import {
 import {CreateAgentDialog} from "@/components/CreateAgentDialog";
 import {ProfileAvatar} from "@/components/ProfileAvatar";
 import {WorkersPanelButton} from "@/components/WorkersPanel";
-import {IS_DESKTOP, IS_MACOS} from "@/platform";
+import {IS_DESKTOP, IS_MACOS, dragRegionAttributes} from "@/platform";
 
 interface SidebarProps {
 	liveStates: Record<string, ChannelLiveState>;
@@ -273,7 +273,14 @@ export function Sidebar({liveStates: _liveStates}: SidebarProps) {
 	};
 
 	return (
-		<aside className="flex w-[220px] shrink-0 flex-col bg-sidebar">
+		<aside className="relative flex w-[220px] shrink-0 flex-col bg-sidebar">
+			{/* macOS drag region — covers the padding area above the company switcher */}
+			{IS_DESKTOP && IS_MACOS && (
+				<div
+					{...dragRegionAttributes()}
+					className="absolute inset-x-0 top-0 h-[50px] cursor-grab"
+				/>
+			)}
 			{/* Company switcher */}
 			<div className={`px-3 ${IS_DESKTOP && IS_MACOS ? "pt-[50px]" : "pt-3"}`}>
 				<Popover.Root open={switcherOpen} onOpenChange={setSwitcherOpen}>

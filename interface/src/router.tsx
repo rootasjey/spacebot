@@ -28,6 +28,7 @@ import {AgentChat} from "@/routes/AgentChat";
 import {Settings} from "@/routes/Settings";
 import {Workbench} from "@/routes/Workbench";
 import {useLiveContext} from "@/hooks/useLiveContext";
+import {IS_DESKTOP, IS_MACOS, dragRegionAttributes} from "@/platform";
 
 // ── Root layout ──────────────────────────────────────────────────────────
 
@@ -41,7 +42,14 @@ function RootLayout() {
 			<ConnectionBanner state={connectionState} hasData={hasData} />
 			<div className="flex min-h-0 flex-1">
 				<Sidebar liveStates={liveStates} />
-				<div className="flex min-w-0 flex-1 flex-col overflow-hidden py-[10px] pr-[10px]">
+				<div className="relative flex min-w-0 flex-1 flex-col overflow-hidden py-[10px] pr-[10px]">
+					{/* macOS drag region in the top padding area */}
+					{IS_DESKTOP && IS_MACOS && (
+						<div
+							{...dragRegionAttributes()}
+							className="absolute inset-x-0 top-0 h-[20px] cursor-grab"
+						/>
+					)}
 					{bare ? (
 						<Outlet />
 					) : (
