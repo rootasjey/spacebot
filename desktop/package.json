@@ -1,7 +1,7 @@
 {
   "name": "spacebot-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.5.0-fork.2",
   "scripts": {
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

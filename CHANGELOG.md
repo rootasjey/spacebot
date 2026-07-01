@@ -2,6 +2,35 @@
 
 Seeded from GitHub releases; maintained by the release bump workflow.
 
+## v0.5.0-fork.2
+
+### Release Story
+
+This release turns Spacebot Desktop from a functional proxy into a proper native macOS citizen. The window finally drags from the titlebar like any other app, the proxy no longer kills SSE connections every thirty seconds, and you can now configure — or disable — the voice overlay's keyboard shortcuts with a live key recorder.
+
+Three areas got attention:
+
+- **Window chrome**: switching from `titleBarStyle: Overlay` to `Transparent` restored native titlebar dragging while keeping the dark theme's visual continuity.
+- **Proxy stability**: removing the 30-second reqwest timeout stopped the infinite reconnect loop that showed "Reconnecting... Dashboard may show stale data." every half minute.
+- **Shortcut flexibility**: both the show/hide and recording shortcuts now have independent toggles and a click-to-record key picker — press any combination and it sticks.
+
+## What's Changed
+
+* **Native window dragging** — switched from `titleBarStyle: Overlay` to `Transparent`, restoring native macOS titlebar dragging. The titlebar now matches the sidebar colour and the window moves like any other app.
+
+* **Proxy no longer kills SSE** — removed the 30-second reqwest timeout that was killing the `/events` SSE stream every half minute, causing a perpetual "Reconnecting..." loop in the dashboard.
+
+* **Configurable keyboard shortcuts** — both the show/hide overlay shortcut and the recording shortcut are now independently toggleable and reconfigurable via a live key recorder in Settings > Desktop. Press any combination to set it.
+
+* **Version bump** — `v0.5.0-fork.1` → `v0.5.0-fork.2`
+
+**Commits**
+
+- `cc84734f` fix(desktop): native window dragging via titleBarStyle Transparent
+- `125a6209` fix(proxy): remove 30s timeout that killed SSE stream every 30s
+- `67753981` feat(desktop): configurable keyboard shortcuts with key recorder
+
+
 ## v0.5.0
 
 ### Release Story
